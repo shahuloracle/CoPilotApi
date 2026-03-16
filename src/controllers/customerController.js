@@ -1,4 +1,5 @@
-const res = require("express/lib/response");
+const { json } = require("express");
+
 
 const controller = {};
 
@@ -9,7 +10,18 @@ controller.list = (req, res) => {
                 res.json(err);
             }
 
-            res.render('customers', {
+            const customerData = customers.map((customer) => {
+                if (customer.id > 0) {
+                    return {
+                        ...customer,
+                        action: 'update'
+                    };
+                }
+                return customer;
+            });
+           
+            res.json({
+                success: true,
                 data: customers
             });
         });
@@ -17,62 +29,48 @@ controller.list = (req, res) => {
 };
 
 controller.save = (req, res) => {
-    const data = req.body;
-
-    req.getConnection((err, conn) => {
-        conn.query('INSERT INTO customer set ?', [data], (err, customer) => {
-            if (err) {
-                res.json(err);
-            }
-
-            res.redirect('/');
-        });
+    
+    const customers = req.body.customers; 
+    var customerDML = customers.map(customer => {
+        if(customer.id>0 && customer.name != "delete"){
+            return { ...customer, action: 'UPDATE' };
+        }
+        else if(customer.id == 0){
+            return { ...customer, action: 'INSERT' };
+        }
+        else if(customer.name === "delete"){
+            return { ...customer, action: 'DELETE' };
+        }
     });
-};
-
-controller.delete = (req, res) => {
-    const { id } = req.params;
-
+    console.log("Received customers:", customerDML);
+    
     req.getConnection((err, conn) => {
-        conn.query('DELETE FROM customer WHERE id = ?', [id], (err, rows) => {
+        if (err) {
+            return res.status(500).json({
+                isSuccess: false,
+                message: "Database connection failed",
+                error: err.message
+            });
+        }
+        
+        conn.query('CALL sp_customer_bulk(?)', [JSON.stringify(customerDML)], (err, result) => {
             if (err) {
-                res.json(err);
+                return res.status(500).json({
+                    isSuccess: false,
+                    message: "Failed to save customer",
+                    error: err.message
+                });
             }
 
-            res.redirect('/');
-        });
-    });
-};
-
-controller.edit = (req, res) => {
-    const { id } = req.params;
-
-    req.getConnection((err, conn) => {
-        conn.query('SELECT * FROM customer WHERE id = ?', [id], (err, customer) => {
-            if (err) {
-                res.json(err);
-            }
-            
-            res.render('customer_edit', {
-                data: customer[0]
+            res.json({
+                isSuccess: true,
+                message: "Customer saved successfully",
+                data: {    
+                }
             });
         });
     });
 };
 
-controller.update = (req, res) => {
-    const { id } = req.params;
-    const newCustomer = req.body;
-    
-    req.getConnection((err, conn) => {
-        conn.query('UPDATE customer set ? WHERE id = ?', [newCustomer, id], (err, rows) => {
-            if (err) {
-                res.json(err);
-            }
-            
-            res.redirect('/');
-        });
-    });
-};
 
 module.exports = controller;
